@@ -1,0 +1,116 @@
+version: "3.9"
+
+
+services:
+  nginx:
+    build:
+      context: .docker/nginx
+      dockerfile: Dockerfile
+    hostname: nginx
+    container_name: nginx
+    image: nginx
+    networks:
+      - lara-api-test
+    ports:
+      - "80:80"
+
+    volumes:
+      - type: bind
+        source: .
+        target: /var/www/html
+      - type: bind
+        source: .docker/nginx/configs/nginx.conf
+        target: /etc/nginx/nginx.conf
+    #command: ['sleep', '9999']
+    command: ['nginx', '-g', 'daemon off;']
+
+
+
+  php82fpm:
+    build:
+      context: .docker/php82fpm
+      dockerfile: Dockerfile
+    hostname: php82fpm
+    container_name: php82fpm
+    image: phpfpm
+    networks:
+      - lara-api-test
+
+    volumes:
+      - type: bind
+        source: .docker/php82fpm/configs/www.conf
+        target: /usr/local/etc/php/conf.d/docker-fpm.ini
+        read_only: true
+
+      - type: bind
+        source: .
+        target: /var/www/html
+
+      - type: bind
+        source: .docker/php82fpm/configs/php.ini-dev
+        target: /usr/local/etc/php/php.ini
+        read_only: true
+
+      - type: bind
+        source: .docker/php82fpm/configs/xdebug_3.ini
+        target: /usr/local/etc/php/conf.d/xdebug3.ini
+        read_only: true
+
+    #command: ['sleep', '9999']
+    command: ['php-fpm', '-R', '-F']
+
+  mysql:
+    image: 'mysql/mysql-server:8.0'
+    hostname: mysql
+    container_name: mysql
+    networks:
+      - lara-api-test
+    ports:
+      - '${FORWARD_DB_PORT:-3306}:3306'
+
+    environment:
+      MYSQL_ROOT_PASSWORD: '${DB_PASSWORD}'
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_DATABASE: '${DB_DATABASE}'
+      MYSQL_USER: '${DB_USERNAME}'
+      MYSQL_PASSWORD: '${DB_PASSWORD}'
+      MYSQL_ALLOW_EMPTY_PASSWORD: 1
+    volumes:
+      - 'zakedb-mysql:/var/lib/mysql'
+
+      - type: bind
+        source: .docker/mysql/create-testing-database.sh
+        target: /docker-entrypoint-initdb.d/10-create-testing-database.sh
+
+    healthcheck:
+      test:
+        - CMD
+        - mysqladmin
+        - ping
+        - '-p${DB_PASSWORD}'
+      retries: 3
+      timeout: 5s
+
+
+
+  phpmyadmin:
+    image: phpmyadmin:apache
+    hostname: phpmyadmin
+    container_name: phpmyadmin
+    environment:
+      #- PMA_ARBITRARY=1
+      - PMA_HOST=mysql
+      - PMA_USER=root
+      - PMA_PASSWORD=password
+    networks:
+      - lara-api-test
+    ports:
+      - "8080:80"
+
+
+volumes:
+  zakedb-mysql:
+    driver: local
+
+networks:
+  lara-api-test:
